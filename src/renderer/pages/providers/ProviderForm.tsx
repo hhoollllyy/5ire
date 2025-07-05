@@ -25,6 +25,8 @@ export default function ProviderForm() {
   const [currency, setCurrency] = useState<string>('USD');
   const [endpoint, setEndpoint] = useState<string>('');
   const [endpointError, setEndpointError] = useState<string>('');
+  const [proxy, setProxy] = useState<string>('');
+  const [proxyError, setProxyError] = useState<string>('');
   const [apiKey, setApiKey] = useState<string>('');
   const [apiKeyError, setApiKeyError] = useState<string>('');
   const [secret, setSecret] = useState<string>('');
@@ -38,6 +40,7 @@ export default function ProviderForm() {
     setOldName(provider.name || '');
     setName(provider.name || '');
     setEndpoint(provider.apiBase || '');
+    setProxy(provider.proxy || '');
     setApiKey(provider.apiKey || '');
     setCurrency(provider.currency || 'USD');
     setSecret(provider.apiSecret || '');
@@ -46,10 +49,12 @@ export default function ProviderForm() {
     return () => {
       setName('');
       setEndpoint('');
+      setProxy('');
       setSecret('');
       setVersion('');
       setNameError('');
       setEndpointError('');
+      setProxyError('');
       setSecretError('');
       setVersionError('');
       setIsDefault(false);
@@ -183,9 +188,26 @@ export default function ProviderForm() {
       </div>
       {getChatAPISchema(provider.name || '').includes('key') && (
         <div className="mt-2 flex justify-start items-baseline gap-1">
-          <Label className="w-[70px]" size="small">
+          <InfoLabel
+            className="w-[70px]"
+            size="small"
+            info={
+              provider.referral ? (
+                <button
+                  type="button"
+                  onClick={() =>
+                    window.electron.openExternal(provider.referral as string)
+                  }
+                >
+                  {t('Common.GetAPIKey')}
+                </button>
+              ) : (
+                ''
+              )
+            }
+          >
             {t('Common.APIKey')}
-          </Label>
+          </InfoLabel>
           <Field
             size="small"
             className="field-small flex-grow"
@@ -211,6 +233,43 @@ export default function ProviderForm() {
                   setApiKeyError(t('Common.Required'));
                 } else {
                   setApiKeyError('');
+                }
+              }}
+            />
+          </Field>
+        </div>
+      )}
+      {getChatAPISchema(provider.name || '').includes('proxy') && (
+        <div className="mt-2 flex justify-start items-baseline gap-1">
+          <Label className="w-[70px]" size="small">
+            {t('Common.Proxy')}
+          </Label>
+          <Field
+            size="small"
+            className="field-small flex-grow"
+            validationState={proxyError ? 'error' : 'none'}
+            validationMessage={proxyError}
+          >
+            <Input
+              size="small"
+              value={proxy}
+              className="flex-grow"
+              placeholder={t('Common.Placeholder.Proxy')}
+              onBlur={(ev: React.FocusEvent<HTMLInputElement>) => {
+                if (isValidHttpHRL(ev.target.value)) {
+                  updateProvider(name, {
+                    proxy: ev.target.value,
+                  });
+                } else {
+                  setProxyError(t('Provider.Tooltip.InvalidProxyURL'));
+                }
+              }}
+              onChange={(ev: React.ChangeEvent<HTMLInputElement>) => {
+                setProxy(ev.target.value);
+                if (isValidHttpHRL(ev.target.value)) {
+                  setProxyError('');
+                } else {
+                  setProxyError(t('Provider.Tooltip.InvalidProxyURL'));
                 }
               }}
             />

@@ -286,6 +286,10 @@ main {
   --tw-bg-opacity: 1;
   background-color: rgba(var(--color-bg-surface-3), var(--tw-bg-opacity));
 }
+.bg-sidebar{
+  --tw-bg-opacity: 0.9;
+  background-color: rgba(var(--color-bg-sidebar),var(--tw-bg-opacity));
+}
 
 .justify-start {
   justify-content: flex-start !important;
@@ -293,6 +297,11 @@ main {
 
 .min-w-0 {
   min-width: 0 !important;
+}
+
+#app{
+  border-radius: 20px;
+  box-shadow: 0 0 30px rgba(0, 0, 0, 0.25);
 }
 
 .page {

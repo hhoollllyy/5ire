@@ -191,7 +191,7 @@ const chatModels = [
       },
     },
     isDefault: true,
-    description: `GPT-4o (“o” for “omni”) is OpenAI's versatile, high-intelligence flagship model. It accepts both text and image inputs, and produces text outputs (including Structured Outputs). It is the best model for most tasks, and is OpenAI's most capable model outside of it's o-series models.`,
+    description: `GPT-4o ("o" for "omni") is OpenAI's versatile, high-intelligence flagship model. It accepts both text and image inputs, and produces text outputs (including Structured Outputs). It is the best model for most tasks, and is OpenAI's most capable model outside of it's o-series models.`,
   },
   {
     id: 'gpt-4o-mini',
@@ -271,9 +271,11 @@ export default {
     apiKeyCustomizable: true,
   },
   chat: {
-    apiSchema: ['base', 'key', 'version'],
+    apiSchema: ['base', 'key', 'version', 'proxy'],
     modelExtras: ['deploymentId'],
     docs: {
+      apiBase:
+        'https://{resourceName}.openai.azure.com/openai/deployments/{deploymentId}',
       deploymentId: 'The deployment name you chose when you deployed the model',
       temperature:
         'Higher values will make the output more creative and unpredictable, while lower values will make it more precise.',

@@ -1,5 +1,7 @@
 import {
   Button,
+  Field,
+  Input,
   Menu,
   MenuItem,
   MenuList,
@@ -13,10 +15,13 @@ import Mousetrap from 'mousetrap';
 import { IChatModelConfig, IChatProviderConfig } from 'providers/types';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import Spinner from 'renderer/components/Spinner';
 import ToolStatusIndicator from 'renderer/components/ToolStatusIndicator';
 import { captureException } from 'renderer/logging';
 import useChatStore from 'stores/useChatStore';
 import useProviderStore from 'stores/useProviderStore';
+
+const MAX_MODELS = 15;
 
 export default function ModelCtrl({
   chat,
@@ -31,18 +36,36 @@ export default function ModelCtrl({
   const providers = useMemo(() => {
     return getAvailableProviders().filter((provider) => !provider.disabled);
   }, [getAvailableProviders]);
+  const [query, setQuery] = useState('');
   const [curProvider, setCurProvider] = useState<IChatProviderConfig>();
   const [curModel, setCurModel] = useState<IChatModelConfig>();
   const [models, setModels] = useState<IChatModelConfig[]>([]);
   const isChanged = useRef(false);
   const [isModelsLoaded, setIsModelsLoaded] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [menuModelOpen, setMenuModelOpen] = useState(false);
   const [menuProviderOpen, setMenuProviderOpen] = useState(false);
   const abortController = useRef<AbortController | null>(null);
 
+  const filteredModels = useMemo(() => {
+    return models
+      .filter((model) => {
+        if (query.trim() === '') {
+          return true;
+        }
+        const searchTerm = query.toLowerCase();
+        return (
+          model.name.toLowerCase().includes(searchTerm) ||
+          model.label?.toLowerCase().includes(searchTerm)
+        );
+      })
+      .splice(0, MAX_MODELS);
+  }, [query, models]);
+
   const loadModels = useCallback(
     async function (provider: IChatProviderConfig) {
       setIsModelsLoaded(false);
+      setLoading(true);
       setModels([]);
       if (abortController.current) {
         abortController.current.abort();
@@ -61,6 +84,7 @@ export default function ModelCtrl({
           if ($model) {
             setCurModel($model);
             setIsModelsLoaded(true);
+            setLoading(false);
             return;
           }
         } else {
@@ -71,12 +95,14 @@ export default function ModelCtrl({
         }
         setCurModel(defaultModel);
         setIsModelsLoaded(true);
+        setLoading(false);
       } catch (err: any) {
         if (err.name === 'AbortError') {
           return;
         }
         captureException(err);
         setIsModelsLoaded(false);
+        setLoading(false);
       }
     },
     [chat.id, getModels],
@@ -217,15 +243,35 @@ export default function ModelCtrl({
             icon={<ChevronDownRegular className="w-3" />}
             className="flex justify-start items-center"
           >
-            <div className="overflow-hidden text-ellipsis whitespace-nowrap max-w-32 sm:max-w-48">
-              {curModel?.label || curModel?.name}
+            <div className="overflow-hidden text-ellipsis whitespace-nowrap">
+              {loading ? (
+                <div className="flex items-center gap-1">
+                  <Spinner size={12} />
+                  {t('Common.Loading')}
+                </div>
+              ) : (
+                curModel?.label || curModel?.name
+              )}
             </div>
           </Button>
         </MenuTrigger>
         <MenuPopover>
           <MenuList>
+            {models.length > MAX_MODELS && (
+              <MenuItem disabled>
+                <Field>
+                  <Input
+                    size="small"
+                    placeholder={t('Common.Search')}
+                    onInput={(e) => {
+                      setQuery((e.target as HTMLInputElement).value);
+                    }}
+                  />
+                </Field>
+              </MenuItem>
+            )}
             {models.length > 0 ? (
-              models.map((model: IChatModelConfig) => (
+              filteredModels.map((model: IChatModelConfig) => (
                 <MenuItem
                   key={model.name}
                   disabled={!model.isReady}
@@ -233,6 +279,7 @@ export default function ModelCtrl({
                     paddingTop: 2,
                     paddingBottom: 2,
                     minHeight: 12,
+                    maxWidth: 500,
                   }}
                   onClick={() => {
                     isChanged.current = true;
@@ -241,7 +288,7 @@ export default function ModelCtrl({
                 >
                   <div className="flex justify-start items-center gap-1 text-sm py-1">
                     <ToolStatusIndicator model={model} withTooltip />
-                    <div className="-mt-[3px]">
+                    <div className="-mt-[3px] overflow-x-hidden text-ellipsis whitespace-nowrap max-w-32 sm:max-w-64">
                       <span> {model.label || model.name}</span>
                       {curModel?.name === model.name && <span>✓</span>}
                     </div>

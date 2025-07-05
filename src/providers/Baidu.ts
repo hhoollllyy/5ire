@@ -69,7 +69,7 @@ const chatModels = [
 
 export default {
   name: 'Baidu',
-  apiBase: 'https://qianfan.baidubce.com',
+  apiBase: 'https://api.baidu.com/v1',
   currency: 'CNY',
   options: {
     apiBaseCustomizable: false,
@@ -78,7 +78,7 @@ export default {
   description:
     '[API key] 的获取参考：https://cloud.baidu.com/doc/qianfan-api/s/ym9chdsy5',
   chat: {
-    apiSchema: ['base', 'key'],
+    apiSchema: ['base', 'key', 'proxy'],
     docs: {
       apiKey: '用户账号->安全认证->[API Key]',
     },

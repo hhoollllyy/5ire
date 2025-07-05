@@ -23,6 +23,7 @@ import useKnowledgeStore from 'stores/useKnowledgeStore';
 import SplitPane, { Pane } from 'split-pane-react';
 import Empty from 'renderer/components/Empty';
 
+import useUI from 'hooks/useUI';
 import useUsageStore from 'stores/useUsageStore';
 import useNav from 'hooks/useNav';
 import { debounce } from 'lodash';
@@ -35,7 +36,7 @@ import {
 import useAppearanceStore from 'stores/useAppearanceStore';
 import createService from 'intellichat/services';
 import eventBus from 'utils/bus';
-import ChatContext, { createChatContext } from '../../ChatContext';
+import { createChatContext } from '../../ChatContext';
 import Header from './Header';
 import Messages from './Messages';
 import Editor from './Editor';
@@ -57,6 +58,7 @@ export default function Chat() {
   const anchor = useParams().anchor || null;
   const bus = useRef(eventBus);
   const navigate = useNav();
+  const { heightStyle } = useUI();
   const [activeChatId, setActiveChatId] = useState(id);
   if (activeChatId !== id) {
     setActiveChatId(id);
@@ -66,7 +68,6 @@ export default function Chat() {
   const chatContext = useMemo(() => {
     return createChatContext(activeChatId);
   }, [activeChatId]);
-
 
   const [verticalSizes, setVerticalSizes] = useState(['auto', 200]);
   const [horizontalSizes, setHorizontalSizes] = useState(['auto', 0]);
@@ -90,7 +91,7 @@ export default function Chat() {
   const chatService = useRef<INextChatService>();
   const isReady = useMemo(() => {
     return chatContext.isReady();
-  }, [chatContext, activeChatId]);
+  }, [activeChatId, chatContext.getProvider(), chatContext.getModel()]);
   const [isLoading, setIsLoading] = useState(false);
 
   const { notifyError } = useToast();
@@ -447,7 +448,13 @@ ${prompt}
   }, [messages]);
 
   return (
-    <div id="chat" className="relative h-screen flex flex-start -mx-5 ">
+    <div
+      id="chat"
+      className="relative  flex flex-start -mx-5 "
+      style={{
+        height: heightStyle(),
+      }}
+    >
       <SplitPane
         split="vertical"
         sizes={horizontalSizes}
@@ -456,7 +463,12 @@ ${prompt}
       >
         <div>
           <Header />
-          <div className="h-screen mt-10">
+          <div
+            className=" mt-10"
+            style={{
+              height: heightStyle(),
+            }}
+          >
             <SplitPane
               split="horizontal"
               sizes={verticalSizes}

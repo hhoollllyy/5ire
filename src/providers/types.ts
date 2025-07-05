@@ -12,7 +12,8 @@ export type ProviderType =
   | 'ChatBro'
   | '5ire'
   | 'Doubao'
-  | 'Grok';
+  | 'Grok'
+  | '302AI';
 
 export interface INumberRange {
   min: number;
@@ -101,6 +102,7 @@ export interface IEmbeddingConfig {
 export interface IServiceProvider {
   name: ProviderType;
   description?: string;
+  referral?: string;
   disabled?: boolean;
   isPremium?: boolean;
   isBuiltIn?: boolean;
@@ -146,6 +148,7 @@ export interface IChatModelConfig {
 
 export interface IChatProviderConfig {
   name: string;
+  referral?: string;
   schema: string[];
   description?: string;
   temperature: INumberRange;
@@ -164,4 +167,5 @@ export interface IChatProviderConfig {
   modelExtras?: string[];
   modelsEndpoint?: string;
   models: IChatModelConfig[];
+  proxy?: string;
 }

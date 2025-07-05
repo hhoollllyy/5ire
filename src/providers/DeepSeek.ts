@@ -35,14 +35,14 @@ const chatModels = [
 
 export default {
   name: 'DeepSeek',
-  apiBase: 'https://api.deepseek.com',
+  apiBase: 'https://api.deepseek.com/v1',
   currency: 'CNY',
   options: {
     apiBaseCustomizable: true,
     apiKeyCustomizable: true,
   },
   chat: {
-    apiSchema: ['base', 'key'],
+    apiSchema: ['base', 'key', 'proxy'],
     presencePenalty: { min: -2, max: 2, default: 0 },
     topP: { min: 0, max: 1, default: 1 },
     temperature: { min: 0, max: 2, default: 1 },

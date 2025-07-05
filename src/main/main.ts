@@ -4,6 +4,7 @@ import os from 'node:os';
 import fs from 'node:fs';
 import path from 'path';
 import dotenv from 'dotenv';
+import fetch from 'node-fetch';
 import {
   app,
   dialog,
@@ -13,10 +14,13 @@ import {
   ipcMain,
   nativeTheme,
   MessageBoxOptions,
+  Menu,
 } from 'electron';
+import { Readable } from 'node:stream';
 import crypto from 'crypto';
 import { autoUpdater } from 'electron-updater';
 import Store from 'electron-store';
+import { HttpsProxyAgent } from 'https-proxy-agent';
 import * as logging from './logging';
 import axiom from '../vendors/axiom';
 import MenuBuilder from './menu';
@@ -40,6 +44,7 @@ import {
 } from '../consts';
 import { IMCPServer } from 'types/mcp';
 import { isValidMCPServer, isValidMCPServerKey } from 'utils/validators';
+import { ThemeType } from 'types/appearance';
 
 dotenv.config({
   path: app.isPackaged
@@ -51,8 +56,23 @@ logging.init();
 
 logging.info('Main process start...');
 
+const isDarwin = process.platform === 'darwin';
 const mcp = new ModuleContext();
 const store = new Store();
+const themeSetting =  store.get('settings.theme', 'system') as ThemeType;
+const theme = themeSetting === 'system' ? (nativeTheme.shouldUseDarkColors ? 'dark' : 'light') : themeSetting;
+const titleBarColor = {
+  light: {
+    color: 'rgba(255, 255, 255, 0)',
+    height: 30,
+    symbolColor: 'black',
+  },
+  dark: {
+    color: 'rgba(0, 0, 0, 0)',
+    height: 30,
+    symbolColor: 'white',
+  },
+};
 
 class AppUpdater {
   constructor() {
@@ -189,12 +209,12 @@ const openSafeExternal = (url: string) => {
     const parsedUrl = new URL(url);
     const allowedProtocols = ['http:', 'https:', 'mailto:'];
     if (!allowedProtocols.includes(parsedUrl.protocol)) {
-      console.warn(`Blocked unsafe protocol: ${parsedUrl.protocol}`);
+      logging.warn(`Blocked unsafe protocol: ${parsedUrl.protocol}`);
       return;
     }
     shell.openExternal(url);
   } catch (e) {
-    console.warn('Invalid URL:', url);
+    logging.warn('Invalid URL:', url);
   }
 };
 
@@ -290,6 +310,108 @@ ipcMain.on('install-tool-listener-ready', () => {
     mainWindow?.webContents.send('install-tool', pendingInstallTool);
     pendingInstallTool = null;
   }
+});
+
+const activeRequests = new Map<string, AbortController>();
+
+ipcMain.handle('request', async (event, options) => {
+  const { url, method, headers, body, proxy, isStream } = options;
+  const requestId = Math.random().toString(36).substr(2, 9);
+  const abortController = new AbortController();
+  activeRequests.set(requestId, abortController);
+  try {
+    let agent;
+    if (proxy) {
+      try {
+        agent = new HttpsProxyAgent(proxy);
+        logging.info(`Using proxy: ${proxy}`);
+      } catch (error) {
+        logging.error(`Invalid proxy URL: ${proxy}`, error);
+      }
+    }
+
+    const fetchOptions: any = {
+      method,
+      headers,
+      signal: abortController.signal,
+      ...(agent && { agent }),
+    };
+
+    if (body && method !== 'GET') {
+      fetchOptions.body = body;
+    }
+
+    const response = await fetch(url, fetchOptions);
+    activeRequests.delete(requestId);
+
+    if (isStream) {
+      const nodeStream = response.body as Readable;
+
+      if (nodeStream) {
+        nodeStream.on('data', (chunk: Buffer) => {
+          if (!abortController.signal.aborted) {
+            event.sender.send('stream-data', requestId, new Uint8Array(chunk));
+          }
+        });
+
+        nodeStream.on('end', () => {
+          event.sender.send('stream-end', requestId);
+        });
+
+        nodeStream.on('error', (error) => {
+          event.sender.send('stream-error', requestId, error.message);
+        });
+
+        abortController.signal.addEventListener('abort', () => {
+          if (nodeStream && !nodeStream.destroyed) {
+            nodeStream.destroy(new Error('Request cancelled'));
+          }
+          event.sender.send('stream-end', requestId);
+        });
+      } else {
+        event.sender.send('stream-end', requestId);
+      }
+
+      return {
+        ok: response.ok,
+        status: response.status,
+        statusText: response.statusText,
+        headers: Object.fromEntries(response.headers.entries()),
+        requestId,
+        isStream: true,
+      };
+    } else {
+      const text = await response.text();
+      return {
+        ok: response.ok,
+        status: response.status,
+        statusText: response.statusText,
+        headers: Object.fromEntries(response.headers.entries()),
+        text,
+        requestId,
+      };
+    }
+  } catch (error: unknown) {
+    activeRequests.delete(requestId);
+    if (error instanceof Error && error.name === 'AbortError') {
+      logging.info(`Request ${requestId} was cancelled`);
+    } else {
+      logging.error('Request failed:', error);
+    }
+    throw error;
+  }
+});
+
+ipcMain.handle('cancel-request', async (event, requestId: string) => {
+  const controller = activeRequests.get(requestId);
+  if (controller) {
+    console.log(`Cancelling request ${requestId}`);
+    controller.abort(); // 真正取消网络请求
+    activeRequests.delete(requestId);
+    return true;
+  }
+  console.warn(`Request ${requestId} not found or already completed`);
+  return false;
 });
 
 ipcMain.on('ipc-5ire', async (event) => {
@@ -555,12 +677,22 @@ ipcMain.handle(
 ipcMain.handle('get-knowledge-chunk', async (_, chunkId: string) => {
   return await Knowledge.getChunk(chunkId);
 });
+
 ipcMain.handle('download', (_, fileName: string, url: string) => {
   downloader.download(fileName, url);
 });
 ipcMain.handle('cancel-download', (_, fileName: string) => {
   downloader.cancel(fileName);
 });
+
+ipcMain.on(
+  'titlebar-update-overlay',
+  (_, theme: Exclude<ThemeType, 'system'>) => {
+    if (!isDarwin) {
+      mainWindow?.setTitleBarOverlay!(titleBarColor[theme]);
+    }
+  },
+);
 
 /** mcp */
 ipcMain.handle('mcp-init', async () => {
@@ -599,7 +731,10 @@ ipcMain.handle('mcp-list-tools', async (_, name: string) => {
 });
 ipcMain.handle(
   'mcp-call-tool',
-  async (_, args: { client: string; name: string; args: any, signal?:AbortSignal }) => {
+  async (
+    _,
+    args: { client: string; name: string; args: any; requestId?: string },
+  ) => {
     try {
       return await mcp.callTool(args);
     } catch (error: any) {
@@ -616,6 +751,9 @@ ipcMain.handle(
     }
   },
 );
+ipcMain.handle('mcp-cancel-tool', (_, requestId: string) => {
+  mcp.cancelToolCall(requestId);
+});
 ipcMain.handle('mcp-get-config', () => {
   return mcp.getConfig();
 });
@@ -625,6 +763,60 @@ ipcMain.handle('mcp-put-config', (_, config) => {
 });
 ipcMain.handle('mcp-get-active-servers', () => {
   return mcp.getClientNames();
+});
+
+ipcMain.on('show-context-menu', (event, params) => {
+  const template = [];
+  if (params.type === 'chat-folder') {
+    template.push({
+      label: 'Rename',
+      click: () => {
+        event.sender.send('context-menu-command', 'rename-chat-folder', {
+          type: 'chat-folder',
+          id: params.targetId,
+        });
+      },
+    });
+    template.push({
+      label: 'Settings',
+      click: () => {
+        event.sender.send('context-menu-command', 'folder-chat-settings', {
+          type: 'chat-folder',
+          id: params.targetId,
+        });
+      },
+    });
+    template.push({
+      label: 'Delete',
+      click: () => {
+        event.sender.send('context-menu-command', 'delete-chat-folder', {
+          type: 'chat-folder',
+          id: params.targetId,
+        });
+      },
+    });
+  } else if (params.type === 'chat') {
+    template.push({
+      label: 'Rename',
+      click: () => {
+        event.sender.send('context-menu-command', 'rename-chat', {
+          type: 'chat',
+          id: params.targetId,
+        });
+      },
+    });
+    template.push({
+      label: 'Delete',
+      click: () => {
+        event.sender.send('context-menu-command', 'delete-chat', {
+          type: 'chat',
+          id: params.targetId,
+        });
+      },
+    });
+  }
+  const menu = Menu.buildFromTemplate(template);
+  menu.popup({ window: mainWindow as BrowserWindow, x: params.x, y: params.y });
 });
 
 if (process.env.NODE_ENV === 'production') {
@@ -672,6 +864,16 @@ const createWindow = async () => {
     minWidth: 468,
     minHeight: 600,
     frame: false,
+    ...(isDarwin
+      ? {}
+      : {
+          titleBarStyle: 'hidden',
+        }),
+    ...(isDarwin
+      ? {}
+      : {
+          titleBarOverlay: titleBarColor[theme],
+        }),
     autoHideMenuBar: true,
     // trafficLightPosition: { x: 15, y: 18 },
     icon: getAssetPath('icon.png'),
@@ -691,7 +893,7 @@ const createWindow = async () => {
     return { action: 'deny' };
   });
 
-  // 拦截导航事件，防止在当前窗口打开外部链接
+
   mainWindow.webContents.on('will-navigate', (event, url) => {
     if (mainWindow) {
       const currentURL = mainWindow.webContents.getURL();
@@ -721,6 +923,7 @@ const createWindow = async () => {
         'native-theme-change',
         nativeTheme.shouldUseDarkColors ? 'dark' : 'light',
       );
+      mainWindow.setTitleBarOverlay!(titleBarColor[ nativeTheme.shouldUseDarkColors ? 'dark' : 'light' ]);
     }
   });
 
